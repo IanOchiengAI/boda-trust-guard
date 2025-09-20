@@ -239,6 +239,23 @@ export const loadTrustPacket = (): TrustPacket | null => {
 
 export const sendEmergencySMS = async (location?: { latitude: number; longitude: number }, trustPacketId?: string) => {
   try {
+    // Check if online, if not, queue for later
+    if (!navigator.onLine) {
+      const queueData = { location, trustPacketId };
+      const queueString = localStorage.getItem('boda_offline_queue') || '[]';
+      const queue = JSON.parse(queueString);
+      queue.push({
+        id: `sms_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+        type: 'emergency_sms',
+        data: queueData,
+        timestamp: Date.now(),
+        retryCount: 0
+      });
+      localStorage.setItem('boda_offline_queue', JSON.stringify(queue));
+      console.log('SMS queued for offline processing');
+      return { queued: true };
+    }
+
     const { data: { session } } = await supabase.auth.getSession();
     if (!session) {
       throw new Error('Not authenticated');
