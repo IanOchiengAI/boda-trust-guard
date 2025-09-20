@@ -1,0 +1,25 @@
+{
+  "name": "Boda Trust Guard",
+  "short_name": "BodaBox",
+  "description": "Offline crash detection and evidence capture for boda-bodas",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0f0f0f",
+  "theme_color": "#ef4444",
+  "orientation": "portrait-primary",
+  "categories": ["safety", "utilities"],
+  "icons": [
+    {
+      "src": "/placeholder.svg",
+      "sizes": "192x192",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/placeholder.svg", 
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
