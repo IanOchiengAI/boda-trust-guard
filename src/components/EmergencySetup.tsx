@@ -11,6 +11,8 @@ export const EmergencySetup = () => {
   const [user, setUser] = useState(null);
   const [showSetup, setShowSetup] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [authError, setAuthError] = useState('');
+  const [sessionExpiry, setSessionExpiry] = useState<Date | null>(null);
   const { toast } = useToast();
 
   useEffect(() => {
@@ -24,6 +26,14 @@ export const EmergencySetup = () => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       (event, session) => {
         setUser(session?.user ?? null);
+        setAuthError('');
+        
+        // Set session expiry tracking
+        if (session?.expires_at) {
+          setSessionExpiry(new Date(session.expires_at * 1000));
+        } else {
+          setSessionExpiry(null);
+        }
         
         if (event === 'SIGNED_IN') {
           toast({
@@ -32,6 +42,9 @@ export const EmergencySetup = () => {
           });
         } else if (event === 'SIGNED_OUT') {
           setShowSetup(false);
+          setSessionExpiry(null);
+        } else if (event === 'TOKEN_REFRESHED') {
+          console.log('Session token refreshed');
         }
       }
     );
@@ -41,6 +54,8 @@ export const EmergencySetup = () => {
 
   const handleSignIn = async (email: string) => {
     setIsLoading(true);
+    setAuthError('');
+    
     try {
       const { error } = await supabase.auth.signInWithOtp({
         email,
@@ -49,15 +64,29 @@ export const EmergencySetup = () => {
         }
       });
       
-      if (error) throw error;
+      if (error) {
+        // Enhanced error handling
+        let userFriendlyMessage = error.message;
+        
+        if (error.message.includes('rate_limit')) {
+          userFriendlyMessage = 'Too many login attempts. Please wait a few minutes before trying again.';
+        } else if (error.message.includes('email_address_invalid')) {
+          userFriendlyMessage = 'Please enter a valid email address.';
+        } else if (error.message.includes('signup_disabled')) {
+          userFriendlyMessage = 'New signups are currently disabled. Please contact support.';
+        }
+        
+        setAuthError(userFriendlyMessage);
+        throw new Error(userFriendlyMessage);
+      }
       
       toast({
         title: "Check your email",
-        description: "We've sent you a secure login link",
+        description: "We've sent you a secure login link. Please check your spam folder if you don't see it.",
       });
     } catch (error: any) {
       toast({
-        title: "Error",
+        title: "Authentication Error",
         description: error.message,
         variant: "destructive",
       });
@@ -106,9 +135,16 @@ export const EmergencySetup = () => {
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <p className="text-muted-foreground mb-4">
-            Logged in as: {user.email}
-          </p>
+          <div className="space-y-2 mb-4">
+            <p className="text-muted-foreground">
+              Logged in as: {user.email}
+            </p>
+            {sessionExpiry && (
+              <p className="text-xs text-muted-foreground">
+                Session expires: {sessionExpiry.toLocaleString()}
+              </p>
+            )}
+          </div>
           <Button 
             onClick={() => setShowSetup(!showSetup)} 
             variant={showSetup ? "secondary" : "default"}

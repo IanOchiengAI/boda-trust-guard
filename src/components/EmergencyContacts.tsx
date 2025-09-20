@@ -7,6 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Trash2, Plus, User, Phone } from 'lucide-react';
 import { useToast } from '@/components/ui/use-toast';
 import { validateAndFormatPhone } from '@/utils/phoneValidation';
+import { useSecurityAudit } from '@/hooks/useSecurityAudit';
 
 interface EmergencyContact {
   id: string;
@@ -27,6 +28,7 @@ export const EmergencyContacts = () => {
   });
   const [phoneError, setPhoneError] = useState('');
   const { toast } = useToast();
+  const { logSecurityEvent } = useSecurityAudit();
 
   useEffect(() => {
     fetchContacts();
@@ -82,6 +84,13 @@ export const EmergencyContacts = () => {
 
       if (error) throw error;
 
+      // Log security event
+      await logSecurityEvent('emergency_contact_added', {
+        contact_name: newContact.name,
+        relationship: newContact.relationship,
+        is_primary: newContact.is_primary
+      }, user.id);
+
       toast({
         title: "Success",
         description: "Emergency contact added successfully",
@@ -117,6 +126,12 @@ export const EmergencyContacts = () => {
         .eq('id', id);
 
       if (error) throw error;
+
+      // Log security event
+      const { data: { user } } = await supabase.auth.getUser();
+      await logSecurityEvent('emergency_contact_deleted', {
+        contact_id: id
+      }, user?.id);
 
       toast({
         title: "Success",
