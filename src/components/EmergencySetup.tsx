@@ -5,11 +5,13 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Settings, Shield } from 'lucide-react';
 import { EmergencyContacts } from './EmergencyContacts';
 import { EmailInputDialog } from './EmailInputDialog';
+import { SecurityDashboard } from './SecurityDashboard';
 import { useToast } from '@/components/ui/use-toast';
 
 export const EmergencySetup = () => {
   const [user, setUser] = useState(null);
   const [showSetup, setShowSetup] = useState(false);
+  const [showSecurity, setShowSecurity] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [authError, setAuthError] = useState('');
   const [sessionExpiry, setSessionExpiry] = useState<Date | null>(null);
@@ -96,9 +98,25 @@ export const EmergencySetup = () => {
   };
 
   const handleSignOut = async () => {
-    await supabase.auth.signOut();
-    setUser(null);
-    setShowSetup(false);
+    try {
+      const { error } = await supabase.auth.signOut();
+      if (error) throw error;
+      
+      setUser(null);
+      setShowSetup(false);
+      
+      toast({
+        title: "Signed out successfully",
+        description: "You have been safely signed out",
+      });
+    } catch (error: any) {
+      console.error('Sign out error:', error);
+      toast({
+        title: "Sign Out Error",
+        description: error.message,
+        variant: "destructive",
+      });
+    }
   };
 
   if (!user) {
@@ -145,17 +163,28 @@ export const EmergencySetup = () => {
               </p>
             )}
           </div>
-          <Button 
-            onClick={() => setShowSetup(!showSetup)} 
-            variant={showSetup ? "secondary" : "default"}
-            className="w-full"
-          >
-            {showSetup ? "Hide" : "Show"} Emergency Contacts Setup
-          </Button>
+          <div className="space-y-2">
+            <Button 
+              onClick={() => setShowSetup(!showSetup)} 
+              variant={showSetup ? "secondary" : "default"}
+              className="w-full"
+            >
+              {showSetup ? "Hide" : "Show"} Emergency Contacts Setup
+            </Button>
+            <Button 
+              onClick={() => setShowSecurity(!showSecurity)} 
+              variant={showSecurity ? "secondary" : "outline"}
+              className="w-full"
+            >
+              <Shield className="h-4 w-4 mr-2" />
+              {showSecurity ? "Hide" : "Show"} Security Dashboard
+            </Button>
+          </div>
         </CardContent>
       </Card>
 
       {showSetup && <EmergencyContacts />}
+      {showSecurity && <SecurityDashboard />}
     </div>
   );
 };

@@ -7,6 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Trash2, Plus, User, Phone } from 'lucide-react';
 import { useToast } from '@/components/ui/use-toast';
 import { validateAndFormatPhone } from '@/utils/phoneValidation';
+import { validateEmergencyContact, sanitizeInput, checkClientRateLimit } from '@/utils/securityValidation';
 import { useSecurityAudit } from '@/hooks/useSecurityAudit';
 
 interface EmergencyContact {
@@ -53,6 +54,16 @@ export const EmergencyContacts = () => {
   };
 
   const addContact = async () => {
+    // Check client-side rate limiting (max 10 contacts per minute)
+    if (checkClientRateLimit('add_contact', 10, 60000)) {
+      toast({
+        title: "Rate Limited",
+        description: "Please wait before adding more contacts",
+        variant: "destructive",
+      });
+      return;
+    }
+
     if (!newContact.name || !newContact.phone_number) {
       toast({
         title: "Error",
@@ -62,8 +73,25 @@ export const EmergencyContacts = () => {
       return;
     }
 
-    // Validate phone number
-    const phoneValidation = validateAndFormatPhone(newContact.phone_number);
+    // Enhanced validation with security checks
+    const sanitizedContact = {
+      name: sanitizeInput(newContact.name),
+      phone_number: sanitizeInput(newContact.phone_number),
+      relationship: newContact.relationship ? sanitizeInput(newContact.relationship) : ''
+    };
+
+    const validation = validateEmergencyContact(sanitizedContact);
+    if (!validation.isValid) {
+      toast({
+        title: "Validation Error",
+        description: validation.errors.join('. '),
+        variant: "destructive",
+      });
+      return;
+    }
+
+    // Validate phone number format
+    const phoneValidation = validateAndFormatPhone(sanitizedContact.phone_number);
     if (!phoneValidation.isValid) {
       setPhoneError(phoneValidation.error || 'Invalid phone number');
       return;
@@ -77,8 +105,10 @@ export const EmergencyContacts = () => {
       const { error } = await supabase
         .from('emergency_contacts')
         .insert({
-          ...newContact,
-          phone_number: phoneValidation.formatted || newContact.phone_number,
+          name: sanitizedContact.name,
+          phone_number: phoneValidation.formatted || sanitizedContact.phone_number,
+          relationship: sanitizedContact.relationship || null,
+          is_primary: newContact.is_primary,
           user_id: user.id
         });
 

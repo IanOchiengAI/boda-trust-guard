@@ -4,15 +4,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.57.4';
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-  'X-Content-Type-Options': 'nosniff',
-  'X-Frame-Options': 'DENY',
-  'X-XSS-Protection': '1; mode=block',
-  'Referrer-Policy': 'strict-origin-when-cross-origin',
-  'Content-Security-Policy': "default-src 'self'",
 };
-
-const MAX_SMS_PER_HOUR = 5;
-const MAX_REQUEST_SIZE = 1024 * 10; // 10KB limit
 
 interface SMSRequest {
   message: string;
@@ -30,22 +22,12 @@ const handler = async (req: Request): Promise<Response> => {
   }
 
   try {
-    // Request size validation
-    const contentLength = req.headers.get('content-length');
-    if (contentLength && parseInt(contentLength) > MAX_REQUEST_SIZE) {
-      throw new Error('Request too large');
-    }
-
     const authHeader = req.headers.get('Authorization');
     if (!authHeader) {
       throw new Error('No authorization header');
     }
 
-    // Get client info for logging
-    const clientIP = req.headers.get('x-forwarded-for') || req.headers.get('x-real-ip') || 'unknown';
-    const userAgent = req.headers.get('user-agent') || 'unknown';
-
-    // Initialize Supabase client
+    // Initialize Supabase client with enhanced security headers
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
@@ -56,73 +38,31 @@ const handler = async (req: Request): Promise<Response> => {
     
     if (userError || !user) {
       // Log failed authentication attempt
-      await supabase.from('security_audit_logs').insert({
-        event_type: 'failed_auth',
-        event_details: { error: userError?.message || 'Invalid token' },
-        ip_address: clientIP,
-        user_agent: userAgent
+      console.error('Authentication failed:', userError?.message || 'Invalid token');
+      await logSecurityEvent(supabase, null, 'auth_failure', {
+        error: userError?.message || 'Invalid token',
+        ip: req.headers.get('cf-connecting-ip') || req.headers.get('x-forwarded-for'),
+        userAgent: req.headers.get('user-agent')
       });
       throw new Error('Invalid user token');
     }
 
-    const { message, location, trustPacketId }: SMSRequest = await req.json();
-
     // Check rate limiting
-    const { data: rateLimit, error: rateLimitError } = await supabase
-      .from('sms_rate_limits')
-      .select('*')
-      .eq('user_id', user.id)
-      .single();
-
-    if (rateLimitError && rateLimitError.code !== 'PGRST116') {
-      throw new Error('Error checking rate limits');
+    const isRateLimited = await checkAndUpdateRateLimit(supabase, user.id);
+    if (isRateLimited) {
+      await logSecurityEvent(supabase, user.id, 'rate_limit_exceeded', {
+        ip: req.headers.get('cf-connecting-ip') || req.headers.get('x-forwarded-for'),
+        userAgent: req.headers.get('user-agent')
+      });
+      throw new Error('Rate limit exceeded. You can send up to 5 SMS per hour.');
     }
 
-    const now = new Date();
-    
-    if (rateLimit) {
-      const resetTime = new Date(rateLimit.reset_time);
-      
-      if (now > resetTime) {
-        // Reset the counter
-        await supabase
-          .from('sms_rate_limits')
-          .update({
-            sms_count: 1,
-            reset_time: new Date(now.getTime() + 60 * 60 * 1000).toISOString() // 1 hour from now
-          })
-          .eq('user_id', user.id);
-      } else if (rateLimit.sms_count >= MAX_SMS_PER_HOUR) {
-        // Log rate limit violation
-        await supabase.from('security_audit_logs').insert({
-          user_id: user.id,
-          event_type: 'rate_limit_exceeded',
-          event_details: { 
-            current_count: rateLimit.sms_count,
-            max_allowed: MAX_SMS_PER_HOUR,
-            reset_time: rateLimit.reset_time
-          },
-          ip_address: clientIP,
-          user_agent: userAgent
-        });
-        
-        throw new Error(`Rate limit exceeded. Maximum ${MAX_SMS_PER_HOUR} SMS per hour. Reset at ${resetTime.toLocaleString()}`);
-      } else {
-        // Increment counter
-        await supabase
-          .from('sms_rate_limits')
-          .update({ sms_count: rateLimit.sms_count + 1 })
-          .eq('user_id', user.id);
-      }
-    } else {
-      // Create new rate limit entry
-      await supabase
-        .from('sms_rate_limits')
-        .insert({
-          user_id: user.id,
-          sms_count: 1,
-          reset_time: new Date(now.getTime() + 60 * 60 * 1000).toISOString()
-        });
+    const { message, location, trustPacketId }: SMSRequest = await req.json();
+
+    // Validate request size (max 10KB)
+    const requestSize = JSON.stringify({ message, location, trustPacketId }).length;
+    if (requestSize > 10240) {
+      throw new Error('Request too large');
     }
 
     // Get emergency contacts for the user
@@ -150,18 +90,28 @@ const handler = async (req: Request): Promise<Response> => {
 
     const auth = btoa(`${twilioAccountSid}:${twilioAuthToken}`);
     
-    // Prepare SMS content
-    let smsMessage = `🚨 EMERGENCY ALERT 🚨\n\n${message}`;
+    // Prepare SMS content with input sanitization
+    let smsMessage = `🚨 EMERGENCY ALERT 🚨\n\n${message.substring(0, 500)}`; // Limit message length
     
     if (location) {
       smsMessage += `\n\nLocation: https://maps.google.com/maps?q=${location.latitude},${location.longitude}`;
     }
     
     if (trustPacketId) {
-      smsMessage += `\n\nTrust Packet ID: ${trustPacketId}`;
+      smsMessage += `\n\nTrust Packet ID: ${trustPacketId.substring(0, 50)}`;
     }
     
     smsMessage += `\n\nTime: ${new Date().toLocaleString()}`;
+
+    // Log emergency SMS initiation
+    await logSecurityEvent(supabase, user.id, 'emergency_sms_initiated', {
+      contactCount: contacts.length,
+      hasLocation: !!location,
+      hasTrustPacket: !!trustPacketId,
+      messageLength: message.length,
+      ip: req.headers.get('cf-connecting-ip') || req.headers.get('x-forwarded-for'),
+      userAgent: req.headers.get('user-agent')
+    });
 
     // Send SMS to all emergency contacts
     const results = [];
@@ -217,19 +167,11 @@ const handler = async (req: Request): Promise<Response> => {
 
     const successCount = results.filter(r => r.success).length;
     
-    // Log successful SMS send
-    await supabase.from('security_audit_logs').insert({
-      user_id: user.id,
-      event_type: 'emergency_sms_sent',
-      event_details: { 
-        contacts_count: contacts.length,
-        success_count: successCount,
-        message_preview: message.substring(0, 50),
-        has_location: !!location,
-        trust_packet_id: trustPacketId
-      },
-      ip_address: clientIP,
-      user_agent: userAgent
+    // Log SMS completion
+    await logSecurityEvent(supabase, user.id, 'emergency_sms_completed', {
+      successCount,
+      totalContacts: contacts.length,
+      results: results.map(r => ({ success: r.success, contact: r.contact }))
     });
     
     return new Response(JSON.stringify({
@@ -240,6 +182,11 @@ const handler = async (req: Request): Promise<Response> => {
       status: 200,
       headers: {
         'Content-Type': 'application/json',
+        'Content-Security-Policy': "default-src 'self'",
+        'X-Content-Type-Options': 'nosniff',
+        'X-Frame-Options': 'DENY',
+        'X-XSS-Protection': '1; mode=block',
+        'Strict-Transport-Security': 'max-age=31536000; includeSubDomains',
         ...corsHeaders,
       },
     });
@@ -253,14 +200,11 @@ const handler = async (req: Request): Promise<Response> => {
       const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
       const supabase = createClient(supabaseUrl, supabaseServiceKey);
       
-      await supabase.from('security_audit_logs').insert({
-        event_type: 'sms_function_error',
-        event_details: { 
-          error_message: error.message,
-          error_stack: error.stack
-        },
-        ip_address: req.headers.get('x-forwarded-for') || 'unknown',
-        user_agent: req.headers.get('user-agent') || 'unknown'
+      await logSecurityEvent(supabase, null, 'function_error', {
+        error: error.message,
+        stack: error.stack,
+        ip: req.headers.get('cf-connecting-ip') || req.headers.get('x-forwarded-for'),
+        userAgent: req.headers.get('user-agent')
       });
     } catch (logError) {
       console.error('Failed to log error:', logError);
@@ -272,11 +216,110 @@ const handler = async (req: Request): Promise<Response> => {
     }), {
       status: 500,
       headers: { 
-        'Content-Type': 'application/json', 
+        'Content-Type': 'application/json',
+        'Content-Security-Policy': "default-src 'self'",
+        'X-Content-Type-Options': 'nosniff',
+        'X-Frame-Options': 'DENY',
+        'X-XSS-Protection': '1; mode=block',
+        'Strict-Transport-Security': 'max-age=31536000; includeSubDomains',
         ...corsHeaders 
       },
     });
   }
 };
+
+// Rate limiting function
+async function checkAndUpdateRateLimit(supabase: any, userId: string): Promise<boolean> {
+  const now = new Date();
+  
+  try {
+    // Check existing rate limit
+    const { data: existingLimit } = await supabase
+      .from('sms_rate_limits')
+      .select('*')
+      .eq('user_id', userId)
+      .single();
+
+    if (!existingLimit) {
+      // Create new rate limit entry
+      const { error } = await supabase
+        .from('sms_rate_limits')
+        .insert({
+          user_id: userId,
+          sms_count: 1,
+          reset_time: new Date(now.getTime() + 60 * 60 * 1000) // 1 hour from now
+        });
+      
+      if (error) {
+        console.error('Error creating rate limit:', error);
+        return false; // Allow on error to not block emergency services
+      }
+      return false;
+    }
+
+    // Check if reset time has passed
+    const resetTime = new Date(existingLimit.reset_time);
+    if (now > resetTime) {
+      // Reset the counter
+      const { error } = await supabase
+        .from('sms_rate_limits')
+        .update({
+          sms_count: 1,
+          reset_time: new Date(now.getTime() + 60 * 60 * 1000),
+          updated_at: now
+        })
+        .eq('user_id', userId);
+      
+      if (error) {
+        console.error('Error resetting rate limit:', error);
+      }
+      return false;
+    }
+
+    // Check if limit exceeded (5 SMS per hour)
+    if (existingLimit.sms_count >= 5) {
+      return true;
+    }
+
+    // Increment counter
+    const { error } = await supabase
+      .from('sms_rate_limits')
+      .update({
+        sms_count: existingLimit.sms_count + 1,
+        updated_at: now
+      })
+      .eq('user_id', userId);
+
+    if (error) {
+      console.error('Error updating rate limit:', error);
+    }
+
+    return false;
+  } catch (error) {
+    console.error('Rate limiting error:', error);
+    return false; // Allow on error to not block emergency services
+  }
+}
+
+// Security logging function
+async function logSecurityEvent(supabase: any, userId: string | null, eventType: string, details: any) {
+  try {
+    const { error } = await supabase
+      .from('security_audit_logs')
+      .insert({
+        user_id: userId,
+        event_type: eventType,
+        event_details: details,
+        ip_address: details.ip,
+        user_agent: details.userAgent
+      });
+    
+    if (error) {
+      console.error('Failed to log security event:', error);
+    }
+  } catch (error) {
+    console.error('Security logging error:', error);
+  }
+}
 
 serve(handler);
