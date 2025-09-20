@@ -2,41 +2,67 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Definition of the design system. All colors, gradients, fonts, etc should be defined here. 
-All colors MUST be HSL.
-*/
+/* Boda-Box Design System - Professional Emergency Safety Theme */
 
 @layer base {
   :root {
-    --background: 0 0% 100%;
-    --foreground: 222.2 84% 4.9%;
+    /* Base colors - Dark professional theme */
+    --background: 224 71% 4%;
+    --foreground: 213 31% 91%;
 
-    --card: 0 0% 100%;
-    --card-foreground: 222.2 84% 4.9%;
+    /* Emergency and Safety colors */
+    --emergency: 0 84% 60%;
+    --emergency-foreground: 0 0% 98%;
+    --emergency-glow: 0 84% 60%;
+    
+    --safety: 142 76% 36%;
+    --safety-foreground: 0 0% 98%;
+    --safety-glow: 142 76% 36%;
+    
+    --warning: 48 96% 53%;
+    --warning-foreground: 224 71% 4%;
+    
+    /* UI colors */
+    --card: 224 71% 6%;
+    --card-foreground: 213 31% 91%;
 
-    --popover: 0 0% 100%;
-    --popover-foreground: 222.2 84% 4.9%;
+    --popover: 224 71% 6%;
+    --popover-foreground: 213 31% 91%;
 
-    --primary: 222.2 47.4% 11.2%;
-    --primary-foreground: 210 40% 98%;
+    --primary: 142 76% 36%;
+    --primary-foreground: 0 0% 98%;
 
-    --secondary: 210 40% 96.1%;
-    --secondary-foreground: 222.2 47.4% 11.2%;
+    --secondary: 215 28% 17%;
+    --secondary-foreground: 213 31% 91%;
 
-    --muted: 210 40% 96.1%;
-    --muted-foreground: 215.4 16.3% 46.9%;
+    --muted: 215 28% 17%;
+    --muted-foreground: 217 10% 65%;
 
-    --accent: 210 40% 96.1%;
-    --accent-foreground: 222.2 47.4% 11.2%;
+    --accent: 224 71% 15%;
+    --accent-foreground: 213 31% 91%;
 
-    --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 210 40% 98%;
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 98%;
 
-    --border: 214.3 31.8% 91.4%;
-    --input: 214.3 31.8% 91.4%;
-    --ring: 222.2 84% 4.9%;
+    --border: 215 28% 17%;
+    --input: 215 28% 17%;
+    --ring: 142 76% 36%;
 
-    --radius: 0.5rem;
+    /* Gradients */
+    --gradient-emergency: linear-gradient(135deg, hsl(var(--emergency)), hsl(0 84% 45%));
+    --gradient-safety: linear-gradient(135deg, hsl(var(--safety)), hsl(142 76% 25%));
+    --gradient-dark: linear-gradient(180deg, hsl(224 71% 6%), hsl(224 71% 4%));
+    
+    /* Effects */
+    --shadow-emergency: 0 0 40px hsl(var(--emergency-glow) / 0.3);
+    --shadow-safety: 0 0 40px hsl(var(--safety-glow) / 0.3);
+    --shadow-elevated: 0 10px 40px hsl(224 71% 1% / 0.5);
+    
+    /* Animations */
+    --transition-smooth: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    --transition-bounce: all 0.5s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+
+    --radius: 0.75rem;
 
     --sidebar-background: 0 0% 98%;
 
