@@ -1,3 +1,5 @@
+import { supabase } from '@/integrations/supabase/client';
+
 export interface TrustPacket {
   eventId: string;
   timestamp: string;
@@ -232,6 +234,34 @@ export const loadTrustPacket = (): TrustPacket | null => {
   } catch (error) {
     console.error('Failed to load trust packet:', error);
     return null;
+  }
+};
+
+export const sendEmergencySMS = async (location?: { latitude: number; longitude: number }, trustPacketId?: string) => {
+  try {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) {
+      throw new Error('Not authenticated');
+    }
+
+    const message = `Emergency detected by Boda-Box crash detection system. Immediate assistance may be required.`;
+
+    const response = await supabase.functions.invoke('send-emergency-sms', {
+      body: {
+        message,
+        location,
+        trustPacketId
+      }
+    });
+
+    if (response.error) {
+      throw response.error;
+    }
+
+    return response.data;
+  } catch (error) {
+    console.error('Error sending emergency SMS:', error);
+    throw error;
   }
 };
 

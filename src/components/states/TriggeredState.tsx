@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Camera, Download, Copy, RotateCcw, CheckCircle2, Loader2 } from 'lucide-react';
-import { captureEvidence, saveTrustPacket, exportTrustPacket, TrustPacket } from '@/utils/evidenceCapture';
+import { captureEvidence, saveTrustPacket, exportTrustPacket, sendEmergencySMS, TrustPacket } from '@/utils/evidenceCapture';
 import { useToast } from '@/hooks/use-toast';
 import { EvidenceCard } from '@/components/EvidenceCard';
 
@@ -30,6 +30,36 @@ export const TriggeredState = ({ onReset }: TriggeredStateProps) => {
           description: "Trust packet created and secured",
           variant: "default",
         });
+
+        // Send emergency SMS
+        try {
+          if (packet.location.latitude && packet.location.longitude) {
+            await sendEmergencySMS(
+              { 
+                latitude: packet.location.latitude, 
+                longitude: packet.location.longitude 
+              },
+              packet.eventId
+            );
+            toast({
+              title: "Emergency SMS Sent",
+              description: "Emergency contacts have been notified",
+            });
+          } else {
+            await sendEmergencySMS(undefined, packet.eventId);
+            toast({
+              title: "Emergency SMS Sent",
+              description: "Emergency contacts notified (location unavailable)",
+            });
+          }
+        } catch (smsError) {
+          console.error('SMS sending failed:', smsError);
+          toast({
+            title: "SMS Failed",
+            description: "Could not send emergency alerts. Check emergency contacts.",
+            variant: "destructive",
+          });
+        }
       } catch (err) {
         const errorMessage = err instanceof Error ? err.message : 'Unknown error occurred';
         setError(errorMessage);

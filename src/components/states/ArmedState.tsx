@@ -3,6 +3,7 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Shield, AlertTriangle, Power } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { EmergencySetup } from '../EmergencySetup';
 
 interface ArmedStateProps {
   onEmergencyButton: () => void;
@@ -144,9 +145,14 @@ export const ArmedState = ({ onEmergencyButton, startMonitoring, stopMonitoring 
         </div>
       </div>
 
+      {/* Emergency Setup */}
+      <div className="mb-6">
+        <EmergencySetup />
+      </div>
+
       {/* Footer */}
       <div className="text-center py-4 text-xs text-muted-foreground">
-        <p>Boda-Box v2.1 • Offline-First Evidence Capture</p>
+        <p>Boda-Box v2.1 • Offline-First Evidence Capture • SMS Ready</p>
       </div>
     </div>
   );
