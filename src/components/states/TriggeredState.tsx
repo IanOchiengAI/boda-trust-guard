@@ -41,16 +41,8 @@ export const TriggeredState = ({ onReset }: TriggeredStateProps) => {
               },
               packet.eventId
             );
-            toast({
-              title: "Emergency SMS Sent",
-              description: "Emergency contacts have been notified",
-            });
           } else {
             await sendEmergencySMS(undefined, packet.eventId);
-            toast({
-              title: "Emergency SMS Sent",
-              description: "Emergency contacts notified (location unavailable)",
-            });
           }
         } catch (smsError) {
           console.error('SMS sending failed:', smsError);
