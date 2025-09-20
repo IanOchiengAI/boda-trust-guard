@@ -6,6 +6,7 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Trash2, Plus, User, Phone } from 'lucide-react';
 import { useToast } from '@/components/ui/use-toast';
+import { validateAndFormatPhone } from '@/utils/phoneValidation';
 
 interface EmergencyContact {
   id: string;
@@ -24,6 +25,7 @@ export const EmergencyContacts = () => {
     relationship: '',
     is_primary: false
   });
+  const [phoneError, setPhoneError] = useState('');
   const { toast } = useToast();
 
   useEffect(() => {
@@ -58,6 +60,13 @@ export const EmergencyContacts = () => {
       return;
     }
 
+    // Validate phone number
+    const phoneValidation = validateAndFormatPhone(newContact.phone_number);
+    if (!phoneValidation.isValid) {
+      setPhoneError(phoneValidation.error || 'Invalid phone number');
+      return;
+    }
+
     setIsLoading(true);
     try {
       const { data: { user } } = await supabase.auth.getUser();
@@ -67,6 +76,7 @@ export const EmergencyContacts = () => {
         .from('emergency_contacts')
         .insert({
           ...newContact,
+          phone_number: phoneValidation.formatted || newContact.phone_number,
           user_id: user.id
         });
 
@@ -78,6 +88,7 @@ export const EmergencyContacts = () => {
       });
 
       setNewContact({ name: '', phone_number: '', relationship: '', is_primary: false });
+      setPhoneError('');
       await fetchContacts();
     } catch (error: any) {
       toast({
@@ -87,6 +98,14 @@ export const EmergencyContacts = () => {
       });
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handlePhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+    setNewContact({ ...newContact, phone_number: value });
+    if (phoneError && value.trim()) {
+      setPhoneError('');
     }
   };
 
@@ -140,9 +159,13 @@ export const EmergencyContacts = () => {
               id="phone"
               type="tel"
               value={newContact.phone_number}
-              onChange={(e) => setNewContact({ ...newContact, phone_number: e.target.value })}
-              placeholder="+1234567890"
+              onChange={handlePhoneChange}
+              placeholder="+1234567890 or (123) 456-7890"
+              className={phoneError ? 'border-destructive' : ''}
             />
+            {phoneError && (
+              <p className="text-sm text-destructive mt-1">{phoneError}</p>
+            )}
           </div>
           <div>
             <Label htmlFor="relationship">Relationship</Label>
